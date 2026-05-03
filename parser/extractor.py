@@ -126,6 +126,84 @@ def extract_repeater_items(paragraphs):
 
     return items
 
+def extract_cpt_entries(paragraphs):
+    """
+    Extracts CPT entries from a section's paragraph list.
+
+    Pattern:
+    - Heading 3 = CPT entry heading (e.g. 'Team Member 1', 'Service 1')
+    - Normal paragraphs below it = fields in "Label: Value" format
+    - Label containing 'post title' → becomes the WP post_title
+    - Everything else → becomes an ACF field on the CPT
+
+    Returns list of post dicts:
+    [
+        {
+            "post_title": "Priya Sharma",
+            "entry_heading": "Team Member 1",
+            "acf_fields": [
+                {"label": "Role",       "value": "Founder & CEO",  "acf_type": "text"},
+                {"label": "Bio",        "value": "Priya has 18...", "acf_type": "wysiwyg"},
+                {"label": "Photo",      "value": "priya-sharma.jpg","acf_type": "image"},
+                {"label": "LinkedIn",   "value": "https://...",     "acf_type": "url"},
+                {"label": "Department", "value": "Leadership",      "acf_type": "text"},
+            ]
+        },
+        ...
+    ]
+    """
+    from parser.mapper import map_field_type
+
+    entries = []
+    current_entry = None
+
+    def parse_field(text):
+        if ":" in text:
+            label, _, value = text.partition(":")
+            return label.strip(), value.strip()
+        return "content", text.strip()
+
+    for item in paragraphs:
+        style = item["style"]
+        text  = item["text"]
+
+        # Skip annotation line
+        if text.startswith("[") and style == "Normal":
+            continue
+
+        if style == "Heading 3":
+            # Save previous entry
+            if current_entry is not None:
+                entries.append(current_entry)
+
+            # Start new entry
+            current_entry = {
+                "post_title":    None,
+                "entry_heading": text,
+                "acf_fields":    []
+            }
+
+        elif style == "Normal":
+            if current_entry is not None:
+                label, value = parse_field(text)
+
+                # Detect post title field
+                if "post title" in label.lower() or label.strip().lower() == "title":
+                    current_entry["post_title"] = value
+                else:
+                    acf_type = map_field_type(label, value)
+                    current_entry["acf_fields"].append({
+                        "label":    label,
+                        "value":    value,
+                        "acf_type": acf_type
+                    })
+
+    # Save last entry
+    if current_entry is not None:
+        entries.append(current_entry)
+
+    return entries
+
 
 if __name__ == "__main__":
     from parser.loader import load_document, extract_raw_structure
@@ -135,16 +213,12 @@ if __name__ == "__main__":
     raw      = extract_raw_structure(doc)
     sections = group_sections(raw)
 
-    # Test on FAQ, Testimonials, Partner Logos
-    for section_name in [
-        "6. FAQ Section",
-        "5. Testimonials Section",
-        "8. Partner Logos Section"
-    ]:
+    for section_name in ["4. Team Section", "3. Services Section"]:
         print(f"\n--- {section_name} ---")
-        items = extract_repeater_items(sections[section_name])
-        print(f"  Items found: {len(items)}")
-        for item in items:
-            print(f"\n  [{item['item_heading']}]")
-            for sf in item["sub_fields"]:
-                print(f"    [{sf['acf_type']:<12}] {sf['label']}: {sf['value'][:50]}")
+        entries = extract_cpt_entries(sections[section_name])
+        print(f"  Entries found: {len(entries)}")
+        for entry in entries:
+            print(f"\n  [{entry['entry_heading']}]")
+            print(f"    post_title: {entry['post_title']}")
+            for f in entry["acf_fields"]:
+                print(f"    [{f['acf_type']:<12}] {f['label']}: {f['value'][:50]}")
