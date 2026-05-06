@@ -9,10 +9,12 @@ def extract_fields(paragraphs):
     Pattern A: Heading 3 = label, Normal = value (Hero, Gallery)
     Pattern B: Normal "Label: Value" lines (CTA Banner, Options Page)
 
-    Returns list of dicts: [{label, value, raw_style}]
+    Returns list of dicts: [{label, value, raw_style, acf_type}]
     """
+    from parser.mapper import map_field_type
+
     fields = []
-    current_label = None
+    current_label  = None
     current_values = []
     current_style  = None
 
@@ -21,10 +23,12 @@ def extract_fields(paragraphs):
 
     def save_current():
         if current_label:
+            value = "\n".join(current_values).strip()
             fields.append({
                 "label":     current_label,
-                "value":     "\n".join(current_values).strip(),
+                "value":     value,
                 "raw_style": current_style,
+                "acf_type":  map_field_type(current_label, value),
             })
 
     if has_heading3:
@@ -59,10 +63,13 @@ def extract_fields(paragraphs):
 
             if ":" in text and style in ("Normal", "List Paragraph"):
                 label, _, value = text.partition(":")
+                label = label.strip()
+                value = value.strip()
                 fields.append({
-                    "label":     label.strip(),
-                    "value":     value.strip(),
+                    "label":     label,
+                    "value":     value,
                     "raw_style": style,
+                    "acf_type":  map_field_type(label, value),
                 })
 
     return fields
