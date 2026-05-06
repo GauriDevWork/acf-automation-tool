@@ -176,20 +176,143 @@ def build_repeater_field_group(section_name, items,
     }
 
 
+def build_cpt_config(section_name, cpt_slug):
+    """
+    Generates a CPT registration config dict.
+    This is used to register the custom post type in WordPress
+    via register_post_type() in functions.php or via REST API.
+
+    Args:
+        section_name: e.g. "4. Team Section"
+        cpt_slug:     e.g. "team_member"
+
+    Returns CPT registration dict.
+    """
+    # Generate human-readable labels from slug
+    label = cpt_slug.replace("_", " ").title()
+
+    return {
+        "post_type": cpt_slug,
+        "label":     label,
+        "labels": {
+            "name":          label + "s",
+            "singular_name": label,
+            "add_new":       "Add New " + label,
+            "add_new_item":  "Add New " + label,
+            "edit_item":     "Edit " + label,
+            "view_item":     "View " + label,
+            "all_items":     "All " + label + "s",
+        },
+        "public":       True,
+        "has_archive":  True,
+        "supports":     ["title", "thumbnail", "excerpt"],
+        "show_in_rest": True,
+    }
+
+
+def get_cpt_slug(section_name):
+    """
+    Derives CPT slug from section name.
+    '3. Services Section' → 'service'
+    '4. Team Section'     → 'team_member'
+    """
+    slug_map = {
+        "team":    "team_member",
+        "service": "service",
+        "staff":   "staff_member",
+        "blog":    "post",
+    }
+    name_lower = section_name.lower()
+    for keyword, slug in slug_map.items():
+        if keyword in name_lower:
+            return slug
+    # Fallback — snake_case the section name
+    return to_snake_case(
+        re.sub(r'^\d+\.\s*', '', section_name)
+           .replace(" Section", "")
+    )
+
+
+def build_cpt_schema(section_name, entries):
+    """
+    Builds the complete schema output for a CPT section.
+    Returns a dict containing:
+    - cpt_config:  CPT registration dict
+    - field_group: ACF field group scoped to the CPT
+    - relationship_field: ACF field to link CPT posts to a page
+
+    Args:
+        section_name: e.g. "4. Team Section"
+        entries:      list of CPT entry dicts from extract_cpt_entries()
+    """
+    if not entries:
+        return None
+
+    cpt_slug   = get_cpt_slug(section_name)
+    cpt_config = build_cpt_config(section_name, cpt_slug)
+
+    # Build ACF fields from first entry's acf_fields
+    # All entries share the same field structure
+    first_entry = entries[0]
+    acf_fields  = []
+    for f in first_entry["acf_fields"]:
+        acf_fields.append(build_field(
+            section_name,
+            f["label"],
+            f["acf_type"]
+        ))
+
+    # Field group scoped to CPT
+    field_group = build_field_group(
+        section_name,
+        first_entry["acf_fields"],
+        location_type="post_type",
+        location_value=cpt_slug
+    )
+
+    # Relationship field on the page to link CPT posts
+    relationship_field = {
+        "key":           make_field_key(section_name, "relationship"),
+        "label":         section_name + " — Related Posts",
+        "name":          to_snake_case(
+                             re.sub(r'^\d+\.\s*', '', section_name)
+                                .replace(" Section", "")
+                         ) + "_posts",
+        "type":          "relationship",
+        "post_type":     [cpt_slug],
+        "filters":       ["search"],
+        "instructions":  f"Select {cpt_slug} posts to display in this section",
+        "required":      0,
+    }
+
+    return {
+        "cpt_config":          cpt_config,
+        "field_group":         field_group,
+        "relationship_field":  relationship_field,
+    }
+
+
 if __name__ == "__main__":
     import json
     from parser.parser import parse_document
 
     result = parse_document("TechArk-Content-Document.docx")
 
-    # Test on FAQ repeater
-    faq = result["6. FAQ Section"]
-    fg  = build_repeater_field_group("6. FAQ Section", faq["items"])
-    print("\n--- FAQ Repeater Field Group ---")
-    print(json.dumps(fg, indent=2))
+    # Test on Team section
+    team = result["4. Team Section"]
+    schema = build_cpt_schema("4. Team Section", team["entries"])
 
-    # Test on Partner Logos repeater
-    logos = result["8. Partner Logos Section"]
-    fg2   = build_repeater_field_group("8. Partner Logos Section", logos["items"])
-    print("\n--- Partner Logos Repeater Field Group ---")
-    print(json.dumps(fg2, indent=2))
+    print("\n--- Team CPT Config ---")
+    print(json.dumps(schema["cpt_config"], indent=2))
+
+    print("\n--- Team ACF Field Group ---")
+    print(json.dumps(schema["field_group"], indent=2))
+
+    print("\n--- Team Relationship Field ---")
+    print(json.dumps(schema["relationship_field"], indent=2))
+
+    # Test on Services section
+    services = result["3. Services Section"]
+    schema2  = build_cpt_schema("3. Services Section", services["entries"])
+    print("\n--- Services CPT slug ---")
+    print(schema2["cpt_config"]["post_type"])
