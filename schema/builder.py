@@ -291,6 +291,40 @@ def build_cpt_schema(section_name, entries):
         "relationship_field":  relationship_field,
     }
 
+def build_options_schema(section_name, fields):
+        """
+        Builds ACF field group for options page sections.
+        Location rule uses options_page instead of post_type.
+        Scoped to ACF Options Page — applies sitewide.
+
+        Args:
+            section_name: e.g. "10. Global Header"
+            fields:       list of {label, value, acf_type} dicts
+        """
+        acf_fields = []
+        for f in fields:
+            acf_fields.append(build_field(
+                section_name,
+                f["label"],
+                f["acf_type"]
+            ))
+
+        return {
+            "key":                   make_group_key(section_name),
+            "title":                 section_name,
+            "fields":                acf_fields,
+            "location":              [[{
+                "param":    "options_page",
+                "operator": "==",
+                "value":    "acf-options",
+            }]],
+            "menu_order":            0,
+            "position":              "normal",
+            "style":                 "default",
+            "label_placement":       "top",
+            "instruction_placement": "label",
+            "active":                True,
+        }
 
 if __name__ == "__main__":
     import json
