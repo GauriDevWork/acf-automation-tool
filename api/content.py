@@ -1,5 +1,4 @@
 # api/content.py
-import json
 import re
 
 
@@ -109,6 +108,98 @@ def push_flat_sections(client, parsed_output, page_id=5):
     return results
 
 
+def format_repeater_payload(items):
+    """
+    Converts parsed repeater items into ACF-compatible array format.
+
+    Input (from extract_repeater_items):
+    [
+        {
+            "item_index": 1,
+            "item_heading": "FAQ 1",
+            "sub_fields": [
+                {"label": "Question", "value": "How long...", "acf_type": "text"},
+                {"label": "Answer",   "value": "Most mid...", "acf_type": "wysiwyg"}
+            ]
+        },
+        ...
+    ]
+
+    Output (ACF repeater format):
+    [
+        {"question": "How long...", "answer": "Most mid..."},
+        ...
+    ]
+    """
+    rows = []
+    for item in items:
+        row = {}
+        for sf in item["sub_fields"]:
+            if sf["acf_type"] == "image":
+                continue
+            name = to_field_name(sf["label"])
+            row[name] = sf["value"]
+        if row:
+            rows.append(row)
+    return rows
+
+
+def push_repeater_sections(client, parsed_output, page_id=5):
+    """
+    Pushes all repeater sections to the WordPress page.
+    Skips Stats section — table-based, no items.
+
+    Args:
+        client:        WPClient instance
+        parsed_output: full dict from parse_document()
+        page_id:       WordPress page ID to push to (default: 5)
+
+    Returns dict of results per section.
+    """
+    results = {}
+
+    for section_name, data in parsed_output.items():
+        if data["type"] != "repeater":
+            continue
+
+        items = data["items"]
+        if not items:
+            print(f"[SKIP] {section_name} — no items (table-based section)")
+            results[section_name] = "SKIPPED"
+            continue
+
+        print(f"\n[PUSH] {section_name} ({len(items)} items)")
+
+        # Get repeater field name from schema builder slug logic
+        field_name = to_field_name(
+            re.sub(r'^\d+\.\s*', '', section_name)
+               .replace(" Section", "")
+               .replace(" section", "")
+        )
+
+        # Format payload
+        rows = format_repeater_payload(items)
+        if not rows:
+            print(f"  [SKIP] {section_name} — all sub-fields are images")
+            results[section_name] = "SKIPPED"
+            continue
+
+        fields_dict = {field_name: rows}
+        success = update_post_acf_fields(client, page_id, fields_dict)
+        results[section_name] = "OK" if success else "FAIL"
+
+        # Verify row count
+        acf = get_post_acf_fields(client, page_id)
+        if acf and field_name in acf:
+            actual_rows = acf[field_name]
+            count = len(actual_rows) if isinstance(actual_rows, list) else "?"
+            print(f"  [VERIFY] {field_name}: {count} rows in WordPress")
+        else:
+            print(f"  [VERIFY] {field_name}: not found in response")
+
+    return results
+
+
 if __name__ == "__main__":
     import config
     from api.client import WPClient
@@ -120,8 +211,14 @@ if __name__ == "__main__":
         exit(1)
 
     result = parse_document("TechArk-Content-Document.docx")
-    results = push_flat_sections(client, result, page_id=5)
+
+    print("\n=== Pushing flat sections ===")
+    flat_results = push_flat_sections(client, result, page_id=5)
+
+    print("\n=== Pushing repeater sections ===")
+    repeater_results = push_repeater_sections(client, result, page_id=5)
 
     print("\n--- Push summary ---")
-    for section, status in results.items():
+    all_results = {**flat_results, **repeater_results}
+    for section, status in all_results.items():
         print(f"  [{status}] {section}")
