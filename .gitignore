@@ -211,3 +211,5 @@ __marimo__/
 
 #output files
 output/
+docs/*.docx
+
