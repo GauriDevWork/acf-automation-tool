@@ -2,6 +2,13 @@
 
 A Python CLI that reads a client `.docx` content document, classifies each section into ACF field types, generates importable ACF field group JSON, pushes all content to WordPress via the REST API, then validates every field landed correctly.
 
+## Live Demo
+
+[Try it live →](https://acf-automation-tool-3uh3fcx7a943s3vwi9avtf.streamlit.app)
+
+Upload a `.docx` content document to see parse and schema generation in action.
+Full WordPress push requires a connected WordPress instance.
+
 ---
 
 ## What it does
