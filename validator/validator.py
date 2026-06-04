@@ -1,23 +1,24 @@
 # validator/validator.py
 import csv
 import os
-from api.content import get_post_acf_fields
+from api.content import get_post_acf_fields, to_field_name
 from api.options import get_options_fields
 
 
 def validate_flat_section(client, section_name, fields, page_id=5):
     """
     Validates flat field group section values against source document.
+    Uses prefixed field names to match what was pushed.
     Returns list of result dicts.
     """
-    from api.content import to_field_name
     results = []
     acf = get_post_acf_fields(client, page_id) or {}
 
     for f in fields:
         if f["acf_type"] == "image":
             continue
-        name     = to_field_name(f["label"])
+        # Use prefixed name — matches what push_flat_sections() pushed
+        name     = to_field_name(f["label"], section_name)
         expected = f["value"].strip()
         actual   = str(acf.get(name, "")).strip()
 
@@ -46,7 +47,6 @@ def validate_repeater_section(client, section_name, items, page_id=5):
     Returns one result dict per repeater.
     """
     import re
-    from api.content import to_field_name, get_post_acf_fields
 
     field_name = to_field_name(
         re.sub(r'^\d+\.\s*', '', section_name)
@@ -98,16 +98,17 @@ def validate_cpt_section(client, section_name, entries):
 def validate_options_section(client, section_name, fields):
     """
     Validates options page field values against source document.
+    Uses prefixed field names to match what was pushed.
     Returns list of result dicts.
     """
-    from api.content import to_field_name
-    results  = []
-    options  = get_options_fields(client) or {}
+    results = []
+    options = get_options_fields(client) or {}
 
     for f in fields:
         if f["acf_type"] == "image":
             continue
-        name     = to_field_name(f["label"])
+        # Use prefixed name — matches what push_all_options_sections() pushed
+        name     = to_field_name(f["label"], section_name)
         expected = f["value"].strip()
         actual   = str(options.get(name, "")).strip()
 
@@ -181,11 +182,11 @@ def run_validation(client, parsed_output, page_id=5, output_dir="output"):
         writer.writerows(all_results)
 
     # Summary
-    total   = len(all_results)
-    passed  = sum(1 for r in all_results if r["status"] == "PASS")
-    failed  = sum(1 for r in all_results if r["status"] == "FAIL")
-    empty   = sum(1 for r in all_results if r["status"] == "EMPTY")
-    rate    = round(passed / total * 100) if total > 0 else 0
+    total  = len(all_results)
+    passed = sum(1 for r in all_results if r["status"] == "PASS")
+    failed = sum(1 for r in all_results if r["status"] == "FAIL")
+    empty  = sum(1 for r in all_results if r["status"] == "EMPTY")
+    rate   = round(passed / total * 100) if total > 0 else 0
 
     print(f"\n[VALIDATION] Report saved to: {report_path}")
     print(f"[VALIDATION] Total: {total} | Pass: {passed} | Fail: {failed} | Empty: {empty}")

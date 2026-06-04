@@ -3,21 +3,27 @@ import hashlib
 import re
 
 
-def to_snake_case(text):
+def to_snake_case(text, section_name=None):
     """
     Converts a label to snake_case field name.
-    'Hero Title'    → 'hero_title'
-    '1.1 Headline'  → 'headline'
-    'Primary CTA Button' → 'primary_cta_button'
+    Optionally prefixes with section slug to avoid field name collisions.
+
+    'Hero Title'              -> 'hero_title'
+    '1.1 Headline'            -> 'headline'
+    '1.1 Headline' + section  -> 'hero_section_headline'
     """
-    # Remove leading numbers and dots (e.g. "1.1 ")
     text = re.sub(r'^\d+[\.\d]*\s*', '', text)
-    # Lowercase
     text = text.lower()
-    # Replace non-alphanumeric with underscore
     text = re.sub(r'[^a-z0-9]+', '_', text)
-    # Strip leading/trailing underscores
     text = text.strip('_')
+
+    if section_name:
+        prefix = re.sub(r'^\d+\.\s*', '', section_name)
+        prefix = prefix.lower()
+        prefix = re.sub(r'[^a-z0-9]+', '_', prefix)
+        prefix = prefix.strip('_')
+        text = f"{prefix}_{text}"
+
     return text
 
 
@@ -44,15 +50,18 @@ def make_group_key(section_name):
 def build_field(section_name, label, acf_type):
     """
     Builds a single ACF field dict.
-    Follows ACF export format exactly.
+    Field name is prefixed with section slug to avoid collisions.
+    show_in_rest and edit_in_rest enabled at field level.
     """
     return {
         "key":          make_field_key(section_name, label),
         "label":        label,
-        "name":         to_snake_case(label),
+        "name":         to_snake_case(label, section_name),
         "type":         acf_type,
         "instructions": "",
         "required":     0,
+        "show_in_rest": 1,
+        "edit_in_rest": 1,
     }
 
 
@@ -60,15 +69,7 @@ def build_field_group(section_name, fields, location_type="post_type",
                       location_value="page"):
     """
     Builds a complete ACF field group dict from a section's fields list.
-    Follows ACF export/import format exactly.
-
-    Args:
-        section_name:   e.g. "1. Hero Section"
-        fields:         list of {label, value, acf_type} dicts
-        location_type:  ACF location rule param (default: post_type)
-        location_value: ACF location rule value (default: page)
-
-    Returns ACF field group dict ready for JSON export.
+    show_in_rest enabled at field group level for ACF Pro 6.x compatibility.
     """
     acf_fields = []
     for f in fields:
@@ -82,6 +83,7 @@ def build_field_group(section_name, fields, location_type="post_type",
         "key":                   make_group_key(section_name),
         "title":                 section_name,
         "fields":                acf_fields,
+        "show_in_rest":          1,
         "location":              [[{
             "param":    location_type,
             "operator": "==",
@@ -99,7 +101,7 @@ def build_field_group(section_name, fields, location_type="post_type",
 def build_repeater_sub_field(section_name, item_heading, label, acf_type):
     """
     Builds a single sub-field dict for inside a repeater.
-    Uses section + item_heading + label to generate a unique key.
+    Sub-field names are NOT prefixed — they live inside the repeater namespace.
     """
     raw = f"{section_name}_{item_heading}_{label}".encode("utf-8")
     key = "field_" + hashlib.md5(raw).hexdigest()[:8]
@@ -110,6 +112,8 @@ def build_repeater_sub_field(section_name, item_heading, label, acf_type):
         "type":         acf_type,
         "instructions": "",
         "required":     0,
+        "show_in_rest": 1,
+        "edit_in_rest": 1,
     }
 
 
@@ -118,19 +122,11 @@ def build_repeater_field_group(section_name, items,
                                 location_value="page"):
     """
     Builds an ACF field group containing a single repeater field.
-    The repeater field contains sub_fields derived from the first item's
-    sub_fields — all items share the same sub-field structure.
-
-    Args:
-        section_name: e.g. "6. FAQ Section"
-        items:        list of item dicts from extract_repeater_items()
-
-    Returns ACF field group dict with repeater field inside.
+    show_in_rest enabled at field group level for ACF Pro 6.x compatibility.
     """
     if not items:
         return build_field_group(section_name, [], location_type, location_value)
 
-    # All items share the same sub-field structure — use first item
     first_item = items[0]
     sub_fields = []
     for sf in first_item["sub_fields"]:
@@ -141,7 +137,6 @@ def build_repeater_field_group(section_name, items,
             sf["acf_type"]
         ))
 
-    # Extract repeater name from section name
     section_slug = to_snake_case(
         re.sub(r'^\d+\.\s*', '', section_name)
            .replace(" Section", "")
@@ -155,6 +150,8 @@ def build_repeater_field_group(section_name, items,
         "type":         "repeater",
         "instructions": "",
         "required":     0,
+        "show_in_rest": 1,
+        "edit_in_rest": 1,
         "sub_fields":   sub_fields,
     }
 
@@ -162,6 +159,7 @@ def build_repeater_field_group(section_name, items,
         "key":                   make_group_key(section_name),
         "title":                 section_name,
         "fields":                [repeater_field],
+        "show_in_rest":          1,
         "location":              [[{
             "param":    location_type,
             "operator": "==",
@@ -176,155 +174,123 @@ def build_repeater_field_group(section_name, items,
     }
 
 
-def build_cpt_config(section_name, cpt_slug):
-    """
-    Generates a CPT registration config dict.
-    This is used to register the custom post type in WordPress
-    via register_post_type() in functions.php or via REST API.
-
-    Args:
-        section_name: e.g. "4. Team Section"
-        cpt_slug:     e.g. "team_member"
-
-    Returns CPT registration dict.
-    """
-    # Generate human-readable labels from slug
-    label = cpt_slug.replace("_", " ").title()
-
-    return {
-        "post_type": cpt_slug,
-        "label":     label,
-        "labels": {
-            "name":          label + "s",
-            "singular_name": label,
-            "add_new":       "Add New " + label,
-            "add_new_item":  "Add New " + label,
-            "edit_item":     "Edit " + label,
-            "view_item":     "View " + label,
-            "all_items":     "All " + label + "s",
-        },
-        "public":       True,
-        "has_archive":  True,
-        "supports":     ["title", "thumbnail", "excerpt"],
-        "show_in_rest": True,
-    }
-
-
 def get_cpt_slug(section_name):
     """
-    Derives CPT slug from section name.
-    '3. Services Section' → 'service'
-    '4. Team Section'     → 'team_member'
+    Derives the CPT post type slug from section name.
+    '3. Services Section' -> 'service'
+    '4. Team Section'     -> 'team_member'
     """
-    slug_map = {
-        "team":    "team_member",
-        "service": "service",
-        "staff":   "staff_member",
-        "blog":    "post",
+    name = re.sub(r'^\d+\.\s*', '', section_name)
+    name = name.replace(" Section", "").replace(" section", "").strip()
+
+    cpt_map = {
+        "team":     "team_member",
+        "services": "service",
+        "service":  "service",
     }
-    name_lower = section_name.lower()
-    for keyword, slug in slug_map.items():
-        if keyword in name_lower:
-            return slug
-    # Fallback — snake_case the section name
-    return to_snake_case(
-        re.sub(r'^\d+\.\s*', '', section_name)
-           .replace(" Section", "")
-    )
+
+    key = name.lower().split()[0] if name else ""
+    return cpt_map.get(key, to_snake_case(name))
 
 
 def build_cpt_schema(section_name, entries):
     """
-    Builds the complete schema output for a CPT section.
-    Returns a dict containing:
-    - cpt_config:  CPT registration dict
-    - field_group: ACF field group scoped to the CPT
-    - relationship_field: ACF field to link CPT posts to a page
-
-    Args:
-        section_name: e.g. "4. Team Section"
-        entries:      list of CPT entry dicts from extract_cpt_entries()
+    Builds ACF field group scoped to CPT, plus CPT registration config.
+    show_in_rest enabled at field group level for ACF Pro 6.x compatibility.
     """
     if not entries:
         return None
 
-    cpt_slug   = get_cpt_slug(section_name)
-    cpt_config = build_cpt_config(section_name, cpt_slug)
+    cpt_slug = get_cpt_slug(section_name)
 
-    # Build ACF fields from first entry's acf_fields
-    # All entries share the same field structure
     first_entry = entries[0]
     acf_fields  = []
     for f in first_entry["acf_fields"]:
+        acf_fields.append(build_field(section_name, f["label"], f["acf_type"]))
+
+    field_group = {
+        "key":                   make_group_key(section_name),
+        "title":                 section_name,
+        "fields":                acf_fields,
+        "show_in_rest":          1,
+        "location":              [[{
+            "param":    "post_type",
+            "operator": "==",
+            "value":    cpt_slug,
+        }]],
+        "menu_order":            0,
+        "position":              "normal",
+        "style":                 "default",
+        "label_placement":       "top",
+        "instruction_placement": "label",
+        "active":                True,
+    }
+
+    match = re.match(r'^\d+\.\s*', section_name)
+    label = section_name.replace(
+        " Section", ""
+    ).replace(match.group(), "").strip() if match else section_name
+
+    cpt_config = {
+        "post_type": cpt_slug,
+        "label":     label,
+        "supports":  ["title", "thumbnail", "excerpt"],
+    }
+
+    field_slug = to_snake_case(
+        re.sub(r'^\d+\.\s*', '', section_name)
+           .replace(" Section", "")
+    )
+    relationship_field = {
+        "key":          make_field_key(section_name, "relationship"),
+        "label":        f"{section_name} Posts",
+        "name":         f"{field_slug}_posts",
+        "type":         "relationship",
+        "post_type":    [cpt_slug],
+        "instructions": "",
+        "required":     0,
+        "show_in_rest": 1,
+        "edit_in_rest": 1,
+    }
+
+    return {
+        "field_group":        field_group,
+        "cpt_config":         cpt_config,
+        "relationship_field": relationship_field,
+    }
+
+
+def build_options_schema(section_name, fields):
+    """
+    Builds ACF field group for options page sections.
+    show_in_rest enabled at field group level for ACF Pro 6.x compatibility.
+    """
+    acf_fields = []
+    for f in fields:
         acf_fields.append(build_field(
             section_name,
             f["label"],
             f["acf_type"]
         ))
 
-    # Field group scoped to CPT
-    field_group = build_field_group(
-        section_name,
-        first_entry["acf_fields"],
-        location_type="post_type",
-        location_value=cpt_slug
-    )
-
-    # Relationship field on the page to link CPT posts
-    relationship_field = {
-        "key":           make_field_key(section_name, "relationship"),
-        "label":         section_name + " — Related Posts",
-        "name":          to_snake_case(
-                             re.sub(r'^\d+\.\s*', '', section_name)
-                                .replace(" Section", "")
-                         ) + "_posts",
-        "type":          "relationship",
-        "post_type":     [cpt_slug],
-        "filters":       ["search"],
-        "instructions":  f"Select {cpt_slug} posts to display in this section",
-        "required":      0,
-    }
-
     return {
-        "cpt_config":          cpt_config,
-        "field_group":         field_group,
-        "relationship_field":  relationship_field,
+        "key":                   make_group_key(section_name),
+        "title":                 section_name,
+        "fields":                acf_fields,
+        "show_in_rest":          1,
+        "location":              [[{
+            "param":    "options_page",
+            "operator": "==",
+            "value":    "acf-options",
+        }]],
+        "menu_order":            0,
+        "position":              "normal",
+        "style":                 "default",
+        "label_placement":       "top",
+        "instruction_placement": "label",
+        "active":                True,
     }
 
-def build_options_schema(section_name, fields):
-        """
-        Builds ACF field group for options page sections.
-        Location rule uses options_page instead of post_type.
-        Scoped to ACF Options Page — applies sitewide.
-
-        Args:
-            section_name: e.g. "10. Global Header"
-            fields:       list of {label, value, acf_type} dicts
-        """
-        acf_fields = []
-        for f in fields:
-            acf_fields.append(build_field(
-                section_name,
-                f["label"],
-                f["acf_type"]
-            ))
-
-        return {
-            "key":                   make_group_key(section_name),
-            "title":                 section_name,
-            "fields":                acf_fields,
-            "location":              [[{
-                "param":    "options_page",
-                "operator": "==",
-                "value":    "acf-options",
-            }]],
-            "menu_order":            0,
-            "position":              "normal",
-            "style":                 "default",
-            "label_placement":       "top",
-            "instruction_placement": "label",
-            "active":                True,
-        }
 
 if __name__ == "__main__":
     import json
@@ -332,21 +298,16 @@ if __name__ == "__main__":
 
     result = parse_document("TechArk-Content-Document.docx")
 
-    # Test on Team section
-    team = result["4. Team Section"]
-    schema = build_cpt_schema("4. Team Section", team["entries"])
+    hero = result["1. Hero Section"]
+    fg   = build_field_group("1. Hero Section", hero["fields"])
+    print("\n--- Hero Section ---")
+    print(f"  show_in_rest (group): {fg['show_in_rest']}")
+    for f in fg["fields"]:
+        print(f"  {f['name']} (show_in_rest: {f['show_in_rest']})")
 
-    print("\n--- Team CPT Config ---")
-    print(json.dumps(schema["cpt_config"], indent=2))
-
-    print("\n--- Team ACF Field Group ---")
-    print(json.dumps(schema["field_group"], indent=2))
-
-    print("\n--- Team Relationship Field ---")
-    print(json.dumps(schema["relationship_field"], indent=2))
-
-    # Test on Services section
-    services = result["3. Services Section"]
-    schema2  = build_cpt_schema("3. Services Section", services["entries"])
-    print("\n--- Services CPT slug ---")
-    print(schema2["cpt_config"]["post_type"])
+    cta = result["7. CTA Banner Section"]
+    fg2 = build_field_group("7. CTA Banner Section", cta["fields"])
+    print("\n--- CTA Banner Section ---")
+    print(f"  show_in_rest (group): {fg2['show_in_rest']}")
+    for f in fg2["fields"]:
+        print(f"  {f['name']} (show_in_rest: {f['show_in_rest']})")

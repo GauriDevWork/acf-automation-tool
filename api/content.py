@@ -44,15 +44,26 @@ def get_post_acf_fields(client, post_id, post_type="pages"):
         return None
 
 
-def to_field_name(label):
+def to_field_name(label, section_name=None):
     """
     Converts a field label to snake_case field name.
-    Matches the same logic used in schema/builder.py to_snake_case().
+    Optionally prefixes with section slug to avoid field name collisions.
+
+    Without prefix: 'Headline'              -> 'headline'
+    With prefix:    'Headline' + '1. Hero'  -> 'hero_section_headline'
     """
     name = re.sub(r'^\d+[\.\d]*\s*', '', label)
     name = name.lower()
     name = re.sub(r'[^a-z0-9]+', '_', name)
     name = name.strip('_')
+
+    if section_name:
+        prefix = re.sub(r'^\d+\.\s*', '', section_name)
+        prefix = prefix.lower()
+        prefix = re.sub(r'[^a-z0-9]+', '_', prefix)
+        prefix = prefix.strip('_')
+        name = f"{prefix}_{name}"
+
     return name
 
 
@@ -60,6 +71,7 @@ def push_flat_sections(client, parsed_output, page_id=5):
     """
     Pushes all field_group sections to the WordPress page.
     Skips image fields — those require media upload first.
+    Field names are prefixed with section slug to avoid collisions.
 
     Args:
         client:        WPClient instance
@@ -81,13 +93,13 @@ def push_flat_sections(client, parsed_output, page_id=5):
 
         print(f"\n[PUSH] {section_name}")
 
-        # Build field dict — skip image fields
+        # Build field dict — skip image fields, prefix names with section
         fields_dict = {}
         for f in fields:
             if f["acf_type"] == "image":
                 print(f"  [SKIP] {f['label']} — image field, requires media upload")
                 continue
-            name = to_field_name(f["label"])
+            name = to_field_name(f["label"], section_name)
             fields_dict[name] = f["value"]
 
         if not fields_dict:
@@ -108,9 +120,11 @@ def push_flat_sections(client, parsed_output, page_id=5):
     return results
 
 
-def format_repeater_payload(items):
+def format_repeater_payload(items, section_name=None):
     """
     Converts parsed repeater items into ACF-compatible array format.
+    Sub-field names inside repeaters are NOT prefixed — they live
+    inside the repeater namespace.
 
     Input (from extract_repeater_items):
     [
@@ -137,6 +151,7 @@ def format_repeater_payload(items):
         for sf in item["sub_fields"]:
             if sf["acf_type"] == "image":
                 continue
+            # Sub-fields inside repeaters are NOT prefixed
             name = to_field_name(sf["label"])
             row[name] = sf["value"]
         if row:
@@ -170,14 +185,14 @@ def push_repeater_sections(client, parsed_output, page_id=5):
 
         print(f"\n[PUSH] {section_name} ({len(items)} items)")
 
-        # Get repeater field name from schema builder slug logic
+        # Get repeater field name — NOT prefixed, uses section slug
         field_name = to_field_name(
             re.sub(r'^\d+\.\s*', '', section_name)
                .replace(" Section", "")
                .replace(" section", "")
         )
 
-        # Format payload
+        # Format payload — sub-fields not prefixed
         rows = format_repeater_payload(items)
         if not rows:
             print(f"  [SKIP] {section_name} — all sub-fields are images")
