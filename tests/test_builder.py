@@ -54,7 +54,7 @@ def test_field_group_field_count():
     result = parse_document("TechArk-Content-Document.docx")
     hero = result["1. Hero Section"]
     fg = build_field_group("1. Hero Section", hero["fields"])
-    assert len(fg["fields"]) == 5
+    assert len(fg["fields"]) == 7
 
 def test_field_group_field_keys_unique():
     result = parse_document("TechArk-Content-Document.docx")

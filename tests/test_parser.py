@@ -54,7 +54,7 @@ def test_hero_section_content():
     result = parse_document("TechArk-Content-Document.docx")
     hero = result["1. Hero Section"]
     assert hero["type"] == "field_group"
-    assert len(hero["fields"]) == 5
+    assert len(hero["fields"]) == 7
 
 
 def test_team_section_content():
