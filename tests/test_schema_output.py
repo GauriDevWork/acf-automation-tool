@@ -13,7 +13,8 @@ def get_schemas():
 def test_schema_output_count():
     schemas = get_schemas()
     # 11 sections minus 1 skipped (Stats table) = 10
-    assert len(schemas) == 10
+    # + 1 auto-generated Page Relationships field group = 11
+    assert len(schemas) == 11
 
 
 def test_schema_json_file_exists():
@@ -26,8 +27,7 @@ def test_schema_json_valid():
     with open("output/schema.json", encoding="utf-8") as f:
         data = json.load(f)
     assert isinstance(data, list)
-    assert len(data) == 10
-
+    assert len(data) == 11
 
 def test_cpt_configs_file_exists():
     get_schemas()

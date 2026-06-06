@@ -6,6 +6,8 @@ from schema.builder import (
     build_field_group,
     build_repeater_field_group,
     build_cpt_schema,
+    make_group_key,
+    make_field_key,
 )
 
 
@@ -13,8 +15,9 @@ def build_options_schema(section_name, fields):
     """
     Builds ACF field group for options page sections.
     Location rule: options_page instead of post_type.
+    show_in_rest enabled at field group level.
     """
-    from schema.builder import make_group_key, build_field
+    from schema.builder import build_field
     acf_fields = []
     for f in fields:
         acf_fields.append(build_field(
@@ -26,10 +29,43 @@ def build_options_schema(section_name, fields):
         "key":                   make_group_key(section_name),
         "title":                 section_name,
         "fields":                acf_fields,
+        "show_in_rest":          1,
         "location":              [[{
             "param":    "options_page",
             "operator": "==",
             "value":    "acf-options",
+        }]],
+        "menu_order":            0,
+        "position":              "normal",
+        "style":                 "default",
+        "label_placement":       "top",
+        "instruction_placement": "label",
+        "active":                True,
+    }
+
+
+def build_page_relationships_group(relationship_fields):
+    """
+    Builds a 'Page Relationships' field group containing all
+    relationship fields for CPT sections.
+    Scoped to post_type = page so it appears on the homepage.
+    show_in_rest enabled at field group level.
+
+    Args:
+        relationship_fields: list of relationship field dicts
+                             from build_cpt_schema()
+
+    Returns ACF field group dict.
+    """
+    return {
+        "key":                   "group_page_relationships",
+        "title":                 "Page Relationships",
+        "fields":                relationship_fields,
+        "show_in_rest":          1,
+        "location":              [[{
+            "param":    "post_type",
+            "operator": "==",
+            "value":    "page",
         }]],
         "menu_order":            0,
         "position":              "normal",
@@ -45,6 +81,10 @@ def build_all_schemas(parsed_output, output_dir="output"):
     Routes each section to the correct builder function.
     Saves individual JSON files + combined schema.json.
 
+    Automatically includes a Page Relationships field group
+    containing relationship fields for all CPT sections.
+    No manual WP Admin step required.
+
     Router logic:
     - field_group  → build_field_group(section_name, fields)
     - repeater     → build_repeater_field_group(section_name, items)
@@ -57,8 +97,9 @@ def build_all_schemas(parsed_output, output_dir="output"):
     schemas_dir = os.path.join(output_dir, "schemas")
     os.makedirs(schemas_dir, exist_ok=True)
 
-    all_field_groups = []
-    cpt_configs      = []
+    all_field_groups    = []
+    cpt_configs         = []
+    relationship_fields = []  # Collect from all CPT sections
 
     for section_name, data in parsed_output.items():
         section_type = data["type"]
@@ -80,6 +121,8 @@ def build_all_schemas(parsed_output, output_dir="output"):
             if result:
                 all_field_groups.append(result["field_group"])
                 cpt_configs.append(result["cpt_config"])
+                # Collect relationship field for page-level linking
+                relationship_fields.append(result["relationship_field"])
 
         elif section_type == "options_page":
             if data["fields"]:
@@ -87,15 +130,24 @@ def build_all_schemas(parsed_output, output_dir="output"):
                 all_field_groups.append(fg)
 
         # Save individual JSON file
-        safe_name = section_name.replace(" ", "_").replace(".", "").replace("/", "_").lower()
+        safe_name = section_name.replace(
+            " ", "_").replace(".", "").replace("/", "_").lower()
         section_path = os.path.join(schemas_dir, f"{safe_name}.json")
         with open(section_path, "w", encoding="utf-8") as f:
             if section_type == "cpt":
                 result = build_cpt_schema(section_name, data["entries"])
                 json.dump(result, f, indent=2, ensure_ascii=False)
             else:
-                json.dump(all_field_groups[-1] if all_field_groups else {}, f,
-                          indent=2, ensure_ascii=False)
+                json.dump(
+                    all_field_groups[-1] if all_field_groups else {},
+                    f, indent=2, ensure_ascii=False
+                )
+
+    # Add Page Relationships field group automatically
+    if relationship_fields:
+        page_rel_group = build_page_relationships_group(relationship_fields)
+        all_field_groups.append(page_rel_group)
+        print(f"[SCHEMA] [page_relationships] Page Relationships — {len(relationship_fields)} fields")
 
     # Save combined schema.json — ACF bulk import format
     schema_path = os.path.join(output_dir, "schema.json")
@@ -119,7 +171,7 @@ def build_all_schemas(parsed_output, output_dir="output"):
 if __name__ == "__main__":
     from parser.parser import parse_document
 
-    result = parse_document("TechArk-Content-Document.docx")
+    result  = parse_document("TechArk-Content-Document.docx")
     schemas = build_all_schemas(result)
 
     print(f"\n--- Schema summary ---")
