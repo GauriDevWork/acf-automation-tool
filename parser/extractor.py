@@ -128,6 +128,47 @@ def extract_fields(paragraphs):
     return fields
 
 
+def extract_table_items(paragraphs):
+    """
+    Extracts repeater items from a table-based section.
+    Detects TableRow items and converts each row into a repeater item.
+
+    The Stats section table has columns:
+    Stat Number | Label | Suffix | Icon (optional)
+
+    Returns list of item dicts compatible with extract_repeater_items() format.
+    """
+    from parser.mapper import map_field_type
+
+    # Get column headers from the first TableRow or use defaults
+    col_headers = ["stat_number", "label", "suffix", "icon"]
+
+    items = []
+    for item in paragraphs:
+        if not item.get("is_table_row"):
+            continue
+
+        cells = item["table_cells"]
+        sub_fields = []
+
+        for i, value in enumerate(cells):
+            label    = col_headers[i] if i < len(col_headers) else f"column_{i+1}"
+            acf_type = map_field_type(label, value)
+            sub_fields.append({
+                "label":    label,
+                "value":    value,
+                "acf_type": acf_type,
+            })
+
+        if sub_fields:
+            items.append({
+                "item_index":   len(items) + 1,
+                "item_heading": f"Stat {len(items) + 1}",
+                "sub_fields":   sub_fields,
+            })
+
+    return items
+
 def extract_repeater_items(paragraphs):
     """
     Extracts repeater items from a section's paragraph list.
