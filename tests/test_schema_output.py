@@ -12,9 +12,8 @@ def get_schemas():
 
 def test_schema_output_count():
     schemas = get_schemas()
-    # 11 sections minus 1 skipped (Stats table) = 10
-    # + 1 auto-generated Page Relationships field group = 11
-    assert len(schemas) == 11
+    # 11 sections + 1 Stats (now parsed from table) + 1 Page Relationships = 12
+    assert len(schemas) == 12
 
 
 def test_schema_json_file_exists():
@@ -27,7 +26,8 @@ def test_schema_json_valid():
     with open("output/schema.json", encoding="utf-8") as f:
         data = json.load(f)
     assert isinstance(data, list)
-    assert len(data) == 11
+    assert len(data) == 12
+
 
 def test_cpt_configs_file_exists():
     get_schemas()
@@ -61,14 +61,26 @@ def test_hero_in_schema():
     assert "1. Hero Section" in titles
 
 
+def test_stats_in_schema():
+    schemas = get_schemas()
+    titles = [fg["title"] for fg in schemas]
+    assert "2. Stats / Numbers Section" in titles
+
+
+def test_page_relationships_in_schema():
+    schemas = get_schemas()
+    titles = [fg["title"] for fg in schemas]
+    assert "Page Relationships" in titles
+
+
 def test_options_page_location():
     result = parse_document("TechArk-Content-Document.docx")
     fg = build_options_schema(
         "10. Global Header",
         result["10. Global Header"]["fields"]
     )
-    assert fg["location"][0][0]["param"]  == "options_page"
-    assert fg["location"][0][0]["value"]  == "acf-options"
+    assert fg["location"][0][0]["param"] == "options_page"
+    assert fg["location"][0][0]["value"] == "acf-options"
 
 
 def test_schemas_dir_exists():

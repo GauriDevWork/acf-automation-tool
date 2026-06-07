@@ -57,6 +57,19 @@ def test_hero_section_content():
     assert len(hero["fields"]) == 7
 
 
+def test_stats_section_content():
+    result = parse_document("TechArk-Content-Document.docx")
+    stats = result["2. Stats / Numbers Section"]
+    assert stats["type"] == "repeater"
+    assert len(stats["items"]) == 4
+    # Verify first item has correct sub-fields
+    first = stats["items"][0]
+    labels = [sf["label"] for sf in first["sub_fields"]]
+    assert "stat_number" in labels
+    assert "label"       in labels
+    assert "suffix"      in labels
+
+
 def test_team_section_content():
     result = parse_document("TechArk-Content-Document.docx")
     team = result["4. Team Section"]

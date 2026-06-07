@@ -5,7 +5,12 @@ import os
 from parser.loader import load_document, extract_raw_structure
 from parser.grouper import group_sections
 from parser.classifier import classify_section
-from parser.extractor import extract_fields, extract_repeater_items, extract_cpt_entries
+from parser.extractor import (
+    extract_fields,
+    extract_repeater_items,
+    extract_cpt_entries,
+    extract_table_items,
+)
 
 
 def parse_document(file_path, output_dir="output"):
@@ -14,7 +19,7 @@ def parse_document(file_path, output_dir="output"):
 
     Steps:
     1. Load the docx file
-    2. Extract raw paragraph structure
+    2. Extract raw paragraph structure (includes tables)
     3. Group paragraphs into named sections
     4. Classify each section type
     5. Call the correct extractor per section type
@@ -48,20 +53,27 @@ def parse_document(file_path, output_dir="output"):
         print(f"[PARSER]   [{section_type:<15}] {section_name}")
 
         if section_type == "repeater":
+            items = extract_repeater_items(paragraphs)
+            # If no items found via Heading 3 pattern, try table extraction
+            if not items:
+                items = extract_table_items(paragraphs)
             data = {
                 "type":  "repeater",
-                "items": extract_repeater_items(paragraphs)
+                "items": items
             }
+
         elif section_type == "cpt":
             data = {
                 "type":    "cpt",
                 "entries": extract_cpt_entries(paragraphs)
             }
+
         elif section_type == "options_page":
             data = {
                 "type":   "options_page",
                 "fields": extract_fields(paragraphs)
             }
+
         else:
             # field_group default
             data = {
