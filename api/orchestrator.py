@@ -32,29 +32,35 @@ def run_all(client, parsed_output, page_id=5):
     print("="*60)
 
     # Step 1 — Flat field groups
-    print("\n[STEP 1/5] Pushing flat field sections...")
+    print("\n[STEP 1/6] Pushing flat field sections...")
     flat_results = push_flat_sections(client, parsed_output, page_id)
     summary["flat_sections"] = flat_results
 
     # Step 2 — Repeater sections
-    print("\n[STEP 2/5] Pushing repeater sections...")
+    print("\n[STEP 2/6] Pushing repeater sections...")
     repeater_results = push_repeater_sections(client, parsed_output, page_id)
     summary["repeater_sections"] = repeater_results
 
     # Step 3 — CPT posts
-    print("\n[STEP 3/5] Creating CPT posts...")
+    print("\n[STEP 3/6] Creating CPT posts...")
     cpt_results = create_all_cpt_posts(client, parsed_output)
     summary["cpt_posts"] = cpt_results
 
     # Step 4 — Relationship fields
-    print("\n[STEP 4/5] Linking relationship fields...")
+    print("\n[STEP 4/6] Linking relationship fields...")
     rel_results = link_all_relationships(client, parsed_output, page_id)
     summary["relationships"] = rel_results
 
     # Step 5 — Options page
-    print("\n[STEP 5/5] Pushing options page sections...")
+    print("\n[STEP 5/6] Pushing options page sections...")
     options_results = push_all_options_sections(client, parsed_output)
     summary["options_sections"] = options_results
+
+    # Step 6 — Image upload
+    print("\n[STEP 6/6] Uploading images...")
+    from api.media import push_image_fields
+    image_results = push_image_fields(client, parsed_output, images_dir="images")
+    summary["image_fields"] = image_results
 
     # Print final summary
     print("\n" + "="*60)
