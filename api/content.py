@@ -99,6 +99,9 @@ def push_flat_sections(client, parsed_output, page_id=5):
             if f["acf_type"] == "image":
                 print(f"  [SKIP] {f['label']} — image field, requires media upload")
                 continue
+            if f["acf_type"] == "gallery":
+                print(f"  [SKIP] {f['label']} — gallery field, handled in image upload step")
+                continue
             name = to_field_name(f["label"], section_name)
             fields_dict[name] = f["value"]
 

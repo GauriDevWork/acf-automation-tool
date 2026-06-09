@@ -17,6 +17,22 @@ def validate_flat_section(client, section_name, fields, page_id=5):
     for f in fields:
         if f["acf_type"] == "image":
             continue
+        if f["acf_type"] == "gallery":
+            # Validate count instead of value
+            name   = to_field_name(f["label"], section_name)
+            actual = acf.get(name, [])
+            expected_count = f["value"].count("File:")
+            actual_count   = len(actual) if isinstance(actual, list) else 0
+            status = "PASS" if actual_count == expected_count else "FAIL"
+            results.append({
+                "section":  section_name,
+                "type":     "field_group",
+                "field":    name,
+                "expected": f"{expected_count} images",
+                "actual":   f"{actual_count} images",
+                "status":   status,
+            })
+            continue
         # Use prefixed name — matches what push_flat_sections() pushed
         name     = to_field_name(f["label"], section_name)
         expected = f["value"].strip()
