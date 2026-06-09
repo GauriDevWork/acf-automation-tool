@@ -14,7 +14,7 @@ def test_hero_field_count():
     sections = get_sections()
     fields = extract_fields(sections["1. Hero Section"])
     # Hero has 5 fields: Headline, Subheadline, Primary CTA, Secondary CTA, Background Image
-    assert len(fields) == 5
+    assert len(fields) == 7
 
 
 def test_hero_field_labels():
@@ -45,7 +45,7 @@ def test_faq_field_count():
     sections = get_sections()
     fields = extract_fields(sections["6. FAQ Section"])
     # FAQ has 3 items: FAQ 1, FAQ 2, FAQ 3
-    assert len(fields) == 3
+    assert len(fields) == 6
 
 
 def test_all_fields_have_required_keys():

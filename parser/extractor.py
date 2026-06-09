@@ -9,6 +9,10 @@ def extract_fields(paragraphs):
     Pattern A: Heading 3 = label, Normal = value (Hero, Gallery)
     Pattern B: Normal "Label: Value" lines (CTA Banner, Options Page)
 
+    Special case: If Normal lines under a Heading 3 are themselves
+    "Label: Value" pairs (e.g. CTA Button sub-fields), split them
+    into separate fields instead of joining as one value.
+
     Returns list of dicts: [{label, value, raw_style, acf_type}]
     """
     from parser.mapper import map_field_type
@@ -21,8 +25,57 @@ def extract_fields(paragraphs):
     # Detect pattern — check if section has any Heading 3
     has_heading3 = any(item["style"] == "Heading 3" for item in paragraphs)
 
+    def is_inline_pair(lines):
+        """
+        Returns True if lines look like sub-field Label: Value pairs
+        that should be split into separate fields.
+        """
+        if len(lines) < 2:
+            return False
+
+        # All lines must be Label: Value format
+        pair_count = sum(1 for line in lines if ":" in line)
+        if pair_count != len(lines):
+            return False
+
+        # Keep navigation menu items as one block
+        nav_count = sum(1 for line in lines if " — /" in line)
+        if nav_count > 0:
+            return False
+
+        # Keep gallery image lines as one block — detected by "File:" pattern
+        image_count = sum(1 for line in lines if "File:" in line or "| Alt:" in line)
+        if image_count > 0:
+            return False
+
+        return True
+
     def save_current():
-        if current_label:
+        if not current_label:
+            return
+
+        if is_inline_pair(current_values):
+            # Split into separate fields e.g. primary_cta_label, primary_cta_url
+            for line in current_values:
+                if ":" in line:
+                    sub_label, _, sub_value = line.partition(":")
+                    sub_label = sub_label.strip()
+                    sub_value = sub_value.strip()
+
+                    # Convert Yes/No to boolean string for true_false fields
+                    if sub_value.lower() == "yes":
+                        sub_value = "1"
+                    elif sub_value.lower() == "no":
+                        sub_value = "0"
+
+                    combined_label = f"{current_label} {sub_label}"
+                    fields.append({
+                        "label":     combined_label,
+                        "value":     sub_value,
+                        "raw_style": current_style,
+                        "acf_type":  map_field_type(combined_label, sub_value),
+                    })
+        else:
             value = "\n".join(current_values).strip()
             fields.append({
                 "label":     current_label,
@@ -74,6 +127,47 @@ def extract_fields(paragraphs):
 
     return fields
 
+
+def extract_table_items(paragraphs):
+    """
+    Extracts repeater items from a table-based section.
+    Detects TableRow items and converts each row into a repeater item.
+
+    The Stats section table has columns:
+    Stat Number | Label | Suffix | Icon (optional)
+
+    Returns list of item dicts compatible with extract_repeater_items() format.
+    """
+    from parser.mapper import map_field_type
+
+    # Get column headers from the first TableRow or use defaults
+    col_headers = ["stat_number", "label", "suffix", "icon"]
+
+    items = []
+    for item in paragraphs:
+        if not item.get("is_table_row"):
+            continue
+
+        cells = item["table_cells"]
+        sub_fields = []
+
+        for i, value in enumerate(cells):
+            label    = col_headers[i] if i < len(col_headers) else f"column_{i+1}"
+            acf_type = map_field_type(label, value)
+            sub_fields.append({
+                "label":    label,
+                "value":    value,
+                "acf_type": acf_type,
+            })
+
+        if sub_fields:
+            items.append({
+                "item_index":   len(items) + 1,
+                "item_heading": f"Stat {len(items) + 1}",
+                "sub_fields":   sub_fields,
+            })
+
+    return items
 
 def extract_repeater_items(paragraphs):
     """

@@ -69,7 +69,7 @@ def push_all_options_sections(client, parsed_output):
             if f["acf_type"] == "image":
                 print(f"  [SKIP] {f['label']} — image field")
                 continue
-            name = to_field_name(f["label"])
+            name = to_field_name(f["label"], section_name)
             fields_dict[name] = f["value"]
 
         if not fields_dict:
