@@ -59,7 +59,7 @@ def run_all(client, parsed_output, page_id=5):
     # Step 6 — Image upload
     print("\n[STEP 6/6] Uploading images...")
     from api.media import push_image_fields
-    image_results = push_image_fields(client, parsed_output, images_dir="images")
+    image_results = push_image_fields(client, parsed_output, images_dir="images", page_id=page_id)
     summary["image_fields"] = image_results
 
     # Print final summary
