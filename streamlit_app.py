@@ -15,9 +15,10 @@ st.markdown("Convert a client content document into fully populated WordPress AC
 
 # ── Sidebar ────────────────────────────────────────────────────────────────
 st.sidebar.header("WordPress Credentials")
-wp_url      = st.sidebar.text_input("WordPress URL", placeholder="http://localhost:10046")
+wp_url      = st.sidebar.text_input("WordPress URL", placeholder="https://acf-demo.webtechee.me")
 wp_user     = st.sidebar.text_input("Username", placeholder="admin")
 wp_password = st.sidebar.text_input("Application Password", type="password")
+page_id     = st.sidebar.number_input("Homepage Page ID", min_value=1, value=5, step=1)
 
 st.sidebar.header("Options")
 phase   = st.sidebar.selectbox("Phase", ["all", "schema", "push", "validate"])
@@ -62,7 +63,7 @@ if run_btn and uploaded_file:
         with st.spinner("Parsing document..."):
             parsed = parse_document(tmp_path)
 
-        st.success(f"✅ Parsed {len(parsed)} sections")
+        st.success(f"Parsed {len(parsed)} sections")
 
         with st.expander("Section Summary", expanded=True):
             summary_data = []
@@ -82,7 +83,7 @@ if run_btn and uploaded_file:
             output_dir = tempfile.mkdtemp()
             schemas    = build_all_schemas(parsed, output_dir=output_dir)
 
-        st.success(f"✅ Generated {len(schemas)} field groups")
+        st.success(f"Generated {len(schemas)} field groups")
 
         schema_path = os.path.join(output_dir, "schema.json")
         with open(schema_path, encoding="utf-8") as f:
@@ -101,7 +102,7 @@ if run_btn and uploaded_file:
 
         # ── WordPress credentials check ────────────────────────────────────
         if not wp_url or not wp_user or not wp_password:
-            st.warning("⚠ Enter WordPress credentials in the sidebar to push content.")
+            st.warning("Enter WordPress credentials in the sidebar to push content.")
             st.stop()
 
         from api.client import WPClient
@@ -112,10 +113,10 @@ if run_btn and uploaded_file:
             connected = client.test_connection()
 
         if not connected:
-            st.error("❌ Cannot connect to WordPress. Check credentials.")
+            st.error("Cannot connect to WordPress. Check credentials.")
             st.stop()
 
-        st.success("✅ Connected to WordPress")
+        st.success("Connected to WordPress")
 
         # ── Push pipeline ──────────────────────────────────────────────────
         if phase in ("push", "all"):
@@ -131,53 +132,59 @@ if run_btn and uploaded_file:
             progress.progress(5, text="[1/6] Pushing flat field sections...")
             log("[STEP 1/6] Pushing flat field sections...")
             from api.content import push_flat_sections
-            push_flat_sections(client, parsed)
-            log("✅ Step 1 complete")
+            push_flat_sections(client, parsed, page_id=int(page_id))
+            log("Step 1 complete")
 
             # Step 2 — Repeaters
             progress.progress(20, text="[2/6] Pushing repeater sections...")
             log("[STEP 2/6] Pushing repeater sections...")
             from api.content import push_repeater_sections
-            push_repeater_sections(client, parsed)
-            log("✅ Step 2 complete")
+            push_repeater_sections(client, parsed, page_id=int(page_id))
+            log("Step 2 complete")
 
             # Step 3 — CPT posts
             progress.progress(35, text="[3/6] Creating CPT posts...")
             log("[STEP 3/6] Creating CPT posts...")
             from api.cpt import create_all_cpt_posts
             create_all_cpt_posts(client, parsed)
-            log("✅ Step 3 complete")
+            log("Step 3 complete")
 
             # Step 4 — Relationships
             progress.progress(50, text="[4/6] Linking relationship fields...")
             log("[STEP 4/6] Linking relationship fields...")
             from api.relationships import link_all_relationships
-            link_all_relationships(client, parsed)
-            log("✅ Step 4 complete")
+            link_all_relationships(client, parsed, page_id=int(page_id))
+            log("Step 4 complete")
 
             # Step 5 — Options
             progress.progress(65, text="[5/6] Pushing options page sections...")
             log("[STEP 5/6] Pushing options page sections...")
             from api.options import push_all_options_sections
             push_all_options_sections(client, parsed)
-            log("✅ Step 5 complete")
+            log("Step 5 complete")
 
             # Step 6 — Images
             progress.progress(80, text="[6/6] Uploading images...")
             log("[STEP 6/6] Uploading images...")
             from api.media import push_image_fields
             image_results = push_image_fields(
-                client, parsed, images_dir="images"
+                client, parsed,
+                images_dir="images",
+                page_id=int(page_id)
             )
-            log(f"✅ Step 6 complete — {len(image_results)} images uploaded")
+            log(f"Step 6 complete — {len(image_results)} images uploaded")
 
             progress.progress(100, text="Pipeline complete!")
-            st.success(f"✅ Pipeline complete — {len(image_results)} images uploaded")
+            st.success(f"Pipeline complete — {len(image_results)} images uploaded")
 
         # ── Validation ─────────────────────────────────────────────────────
         if phase in ("validate", "all"):
             with st.spinner("Running validation..."):
-                results = run_validation(client, parsed, output_dir=output_dir)
+                results = run_validation(
+                    client, parsed,
+                    output_dir=output_dir,
+                    page_id=int(page_id)
+                )
 
             passed = sum(1 for r in results if r["status"] == "PASS")
             failed = sum(1 for r in results if r["status"] == "FAIL")
@@ -193,7 +200,6 @@ if run_btn and uploaded_file:
             c4.metric("Empty", empty)
             c5.metric("Pass rate", f"{rate}%")
 
-            # Colour code the results
             def highlight_status(row):
                 if row["status"] == "PASS":
                     return ["background-color: #1a4731; color: #ffffff"] * len(row)
@@ -222,7 +228,7 @@ if run_btn and uploaded_file:
                 )
 
     except Exception as e:
-        st.error(f"❌ Error: {e}")
+        st.error(f"Error: {e}")
         raise
     finally:
         os.unlink(tmp_path)
