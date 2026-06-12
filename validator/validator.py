@@ -147,7 +147,7 @@ def validate_options_section(client, section_name, fields):
     return results
 
 
-def run_validation(client, parsed_output, page_id=5, output_dir="output"):
+def run_validation(client, parsed_output, page_id, output_dir="output"):
     """
     Runs full validation across all sections.
     Saves results to output/validation_report.csv.
@@ -222,4 +222,4 @@ if __name__ == "__main__":
         exit(1)
 
     result = parse_document("TechArk-Content-Document.docx")
-    run_validation(client, result, page_id=5)
+    run_validation(client, result, page_id=config.PAGE_ID)
