@@ -1,5 +1,4 @@
 # api/orchestrator.py
-import json
 
 
 def run_all(client, parsed_output, page_id=5):
@@ -8,10 +7,11 @@ def run_all(client, parsed_output, page_id=5):
 
     Order matters:
     1. Push flat field sections (Hero, CTA Banner, Gallery)
-    2. Push repeater sections (FAQ, Testimonials, Partner Logos)
+    2. Push repeater sections (FAQ, Testimonials, Partner Logos, Stats)
     3. Create CPT posts (Team, Services)
     4. Link relationship fields (team_posts, services_posts)
     5. Push options page sections (Global Header, Global Footer)
+    6. Upload images (hero, team photos, logos, gallery)
 
     Args:
         client:        WPClient instance
@@ -24,21 +24,35 @@ def run_all(client, parsed_output, page_id=5):
     from api.cpt import create_all_cpt_posts
     from api.relationships import link_all_relationships
     from api.options import push_all_options_sections
+    from api.media import push_image_fields
+
+    # Load section page map from config if available
+    try:
+        import config
+        section_page_map = getattr(config, 'SECTION_PAGE_MAP', {})
+    except ImportError:
+        section_page_map = {}
 
     summary = {}
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ACF AUTOMATION TOOL — FULL PIPELINE RUN")
-    print("="*60)
+    print("=" * 60)
 
     # Step 1 — Flat field groups
     print("\n[STEP 1/6] Pushing flat field sections...")
-    flat_results = push_flat_sections(client, parsed_output, page_id)
+    flat_results = push_flat_sections(
+        client, parsed_output, page_id,
+        section_page_map=section_page_map
+    )
     summary["flat_sections"] = flat_results
 
     # Step 2 — Repeater sections
     print("\n[STEP 2/6] Pushing repeater sections...")
-    repeater_results = push_repeater_sections(client, parsed_output, page_id)
+    repeater_results = push_repeater_sections(
+        client, parsed_output, page_id,
+        section_page_map=section_page_map
+    )
     summary["repeater_sections"] = repeater_results
 
     # Step 3 — CPT posts
@@ -58,14 +72,17 @@ def run_all(client, parsed_output, page_id=5):
 
     # Step 6 — Image upload
     print("\n[STEP 6/6] Uploading images...")
-    from api.media import push_image_fields
-    image_results = push_image_fields(client, parsed_output, images_dir="images", page_id=page_id)
+    image_results = push_image_fields(
+        client, parsed_output,
+        images_dir="images",
+        page_id=page_id
+    )
     summary["image_fields"] = image_results
 
     # Print final summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PIPELINE COMPLETE — SUMMARY")
-    print("="*60)
+    print("=" * 60)
 
     total  = 0
     passed = 0
@@ -74,7 +91,6 @@ def run_all(client, parsed_output, page_id=5):
         if isinstance(results, dict):
             for section, status in results.items():
                 if isinstance(status, dict):
-                    # CPT results are nested dicts
                     for title, pid in status.items():
                         total  += 1
                         passed += 1
@@ -100,4 +116,4 @@ if __name__ == "__main__":
         exit(1)
 
     result = parse_document("TechArk-Content-Document.docx")
-    run_all(client, result, page_id=5)
+    run_all(client, result, page_id=getattr(config, 'PAGE_ID', 5))
