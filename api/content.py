@@ -5,13 +5,6 @@ import re
 def update_post_acf_fields(client, post_id, fields_dict, post_type="pages"):
     """
     Pushes ACF field values to a WordPress post/page.
-
-    Args:
-        client:      WPClient instance
-        post_id:     WordPress post/page ID
-        fields_dict: dict of {field_name: value}
-        post_type:   WordPress post type endpoint (default: pages)
-
     Returns True on success, False on failure.
     """
     payload  = {"acf": fields_dict}
@@ -48,9 +41,6 @@ def to_field_name(label, section_name=None):
     """
     Converts a field label to snake_case field name.
     Optionally prefixes with section slug to avoid field name collisions.
-
-    Without prefix: 'Headline'              -> 'headline'
-    With prefix:    'Headline' + '1. Hero'  -> 'hero_section_headline'
     """
     name = re.sub(r'^\d+[\.\d]*\s*', '', label)
     name = name.lower()
@@ -67,20 +57,21 @@ def to_field_name(label, section_name=None):
     return name
 
 
-def push_flat_sections(client, parsed_output, page_id=5):
+def push_flat_sections(client, parsed_output, page_id=5, section_page_map=None):
     """
-    Pushes all field_group sections to the WordPress page.
-    Skips image fields — those require media upload first.
-    Field names are prefixed with section slug to avoid collisions.
+    Pushes all field_group sections to WordPress.
+    Uses section_page_map to route each section to a specific page ID.
+    Falls back to page_id if section not in map.
 
     Args:
-        client:        WPClient instance
-        parsed_output: full dict from parse_document()
-        page_id:       WordPress page ID to push to (default: 5)
-
-    Returns dict of results per section.
+        client:           WPClient instance
+        parsed_output:    full dict from parse_document()
+        page_id:          default WordPress page ID (default: 5)
+        section_page_map: optional dict of {section_name: page_id}
     """
     results = {}
+    if section_page_map is None:
+        section_page_map = {}
 
     for section_name, data in parsed_output.items():
         if data["type"] != "field_group":
@@ -91,9 +82,11 @@ def push_flat_sections(client, parsed_output, page_id=5):
             print(f"[SKIP] {section_name} — no fields")
             continue
 
+        # Look up page ID for this section — fall back to default
+        target_page_id = section_page_map.get(section_name, page_id)
+
         print(f"\n[PUSH] {section_name}")
 
-        # Build field dict — skip image fields, prefix names with section
         fields_dict = {}
         for f in fields:
             if f["acf_type"] == "image":
@@ -110,11 +103,10 @@ def push_flat_sections(client, parsed_output, page_id=5):
             results[section_name] = "SKIPPED"
             continue
 
-        success = update_post_acf_fields(client, page_id, fields_dict)
+        success = update_post_acf_fields(client, target_page_id, fields_dict)
         results[section_name] = "OK" if success else "FAIL"
 
-        # Verify first field read back
-        acf = get_post_acf_fields(client, page_id)
+        acf = get_post_acf_fields(client, target_page_id)
         if acf:
             first_key = list(fields_dict.keys())[0]
             val = acf.get(first_key, "NOT FOUND")
@@ -126,27 +118,7 @@ def push_flat_sections(client, parsed_output, page_id=5):
 def format_repeater_payload(items, section_name=None):
     """
     Converts parsed repeater items into ACF-compatible array format.
-    Sub-field names inside repeaters are NOT prefixed — they live
-    inside the repeater namespace.
-
-    Input (from extract_repeater_items):
-    [
-        {
-            "item_index": 1,
-            "item_heading": "FAQ 1",
-            "sub_fields": [
-                {"label": "Question", "value": "How long...", "acf_type": "text"},
-                {"label": "Answer",   "value": "Most mid...", "acf_type": "wysiwyg"}
-            ]
-        },
-        ...
-    ]
-
-    Output (ACF repeater format):
-    [
-        {"question": "How long...", "answer": "Most mid..."},
-        ...
-    ]
+    Sub-field names inside repeaters are NOT prefixed.
     """
     rows = []
     for item in items:
@@ -154,7 +126,6 @@ def format_repeater_payload(items, section_name=None):
         for sf in item["sub_fields"]:
             if sf["acf_type"] == "image":
                 continue
-            # Sub-fields inside repeaters are NOT prefixed
             name = to_field_name(sf["label"])
             row[name] = sf["value"]
         if row:
@@ -162,19 +133,21 @@ def format_repeater_payload(items, section_name=None):
     return rows
 
 
-def push_repeater_sections(client, parsed_output, page_id=5):
+def push_repeater_sections(client, parsed_output, page_id=5, section_page_map=None):
     """
-    Pushes all repeater sections to the WordPress page.
-    Skips Stats section — table-based, no items.
+    Pushes all repeater sections to WordPress.
+    Uses section_page_map to route each section to a specific page ID.
+    Falls back to page_id if section not in map.
 
     Args:
-        client:        WPClient instance
-        parsed_output: full dict from parse_document()
-        page_id:       WordPress page ID to push to (default: 5)
-
-    Returns dict of results per section.
+        client:           WPClient instance
+        parsed_output:    full dict from parse_document()
+        page_id:          default WordPress page ID (default: 5)
+        section_page_map: optional dict of {section_name: page_id}
     """
     results = {}
+    if section_page_map is None:
+        section_page_map = {}
 
     for section_name, data in parsed_output.items():
         if data["type"] != "repeater":
@@ -186,16 +159,17 @@ def push_repeater_sections(client, parsed_output, page_id=5):
             results[section_name] = "SKIPPED"
             continue
 
+        # Look up page ID for this section — fall back to default
+        target_page_id = section_page_map.get(section_name, page_id)
+
         print(f"\n[PUSH] {section_name} ({len(items)} items)")
 
-        # Get repeater field name — NOT prefixed, uses section slug
         field_name = to_field_name(
             re.sub(r'^\d+\.\s*', '', section_name)
                .replace(" Section", "")
                .replace(" section", "")
         )
 
-        # Format payload — sub-fields not prefixed
         rows = format_repeater_payload(items)
         if not rows:
             print(f"  [SKIP] {section_name} — all sub-fields are images")
@@ -203,11 +177,10 @@ def push_repeater_sections(client, parsed_output, page_id=5):
             continue
 
         fields_dict = {field_name: rows}
-        success = update_post_acf_fields(client, page_id, fields_dict)
+        success = update_post_acf_fields(client, target_page_id, fields_dict)
         results[section_name] = "OK" if success else "FAIL"
 
-        # Verify row count
-        acf = get_post_acf_fields(client, page_id)
+        acf = get_post_acf_fields(client, target_page_id)
         if acf and field_name in acf:
             actual_rows = acf[field_name]
             count = len(actual_rows) if isinstance(actual_rows, list) else "?"
@@ -230,13 +203,18 @@ if __name__ == "__main__":
 
     result = parse_document("TechArk-Content-Document.docx")
 
+    section_page_map = getattr(config, 'SECTION_PAGE_MAP', {})
+
     print("\n=== Pushing flat sections ===")
-    flat_results = push_flat_sections(client, result, page_id=5)
+    flat_results = push_flat_sections(
+        client, result,
+        page_id=config.PAGE_ID,
+        section_page_map=section_page_map
+    )
 
     print("\n=== Pushing repeater sections ===")
-    repeater_results = push_repeater_sections(client, result, page_id=5)
-
-    print("\n--- Push summary ---")
-    all_results = {**flat_results, **repeater_results}
-    for section, status in all_results.items():
-        print(f"  [{status}] {section}")
+    repeater_results = push_repeater_sections(
+        client, result,
+        page_id=config.PAGE_ID,
+        section_page_map=section_page_map
+    )
