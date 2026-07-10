@@ -200,21 +200,12 @@ if run_btn and uploaded_file:
             c4.metric("Empty", empty)
             c5.metric("Pass rate", f"{rate}%")
 
-            def highlight_status(row):
-                if row["status"] == "PASS":
-                    return ["background-color: #1a4731; color: #ffffff"] * len(row)
-                elif row["status"] == "FAIL":
-                    return ["background-color: #5c1a1a; color: #ffffff"] * len(row)
-                elif row["status"] == "EMPTY":
-                    return ["background-color: #4a3c00; color: #ffffff"] * len(row)
-                return [""] * len(row)
-
             import pandas as pd
             df = pd.DataFrame(results)
-            st.dataframe(
-                df.style.apply(highlight_status, axis=1),
-                use_container_width=True
-            )
+            df["indicator"] = df["status"].map({
+                "PASS": "✓", "FAIL": "✗", "EMPTY": "~"
+            })
+            st.dataframe(df, use_container_width=True)
 
             report_path = os.path.join(output_dir, "validation_report.csv")
             if os.path.exists(report_path):
